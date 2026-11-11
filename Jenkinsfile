@@ -8,13 +8,6 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
-            steps {
-                echo 'Checking out OpsPilot source code...'
-                checkout scm
-            }
-        }
-
         stage('Validate Repository') {
             steps {
                 echo 'Validating project structure...'

@@ -33,6 +33,14 @@ pipeline {
             }
         }
 
+        stage('Dependency Security Audit') {
+            steps {
+                dir('apps/backend-node') {
+                    sh 'npm audit --audit-level=moderate'
+                }
+            }
+        }
+
         stage('JavaScript Syntax Check') {
             steps {
                 dir('apps/backend-node') {

@@ -1,0 +1,28 @@
+
+---
+- name: Validate TaskFlow Nginx configuration
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - exec
+      - -T
+      - nginx
+      - nginx
+      - -t
+    chdir: "{{ taskflow_project_dir }}"
+  changed_when: false
+
+- name: Reload TaskFlow Nginx
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - exec
+      - -T
+      - nginx
+      - nginx
+      - -s
+      - reload
+    chdir: "{{ taskflow_project_dir }}"
+  changed_when: true

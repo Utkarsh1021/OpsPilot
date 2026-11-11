@@ -1,0 +1,10 @@
+
+---
+- name: Configure OpsPilot local environment
+  hosts: local
+  become: false
+  gather_facts: true
+
+  roles:
+    - setup_environment
+    - docker_setup

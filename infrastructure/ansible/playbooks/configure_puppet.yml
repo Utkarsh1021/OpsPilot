@@ -1,0 +1,8 @@
+---
+- name: Apply Puppet configuration through Ansible
+  hosts: local
+  become: true
+  gather_facts: false
+
+  roles:
+    - puppet_apply

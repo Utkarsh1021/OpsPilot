@@ -1,0 +1,51 @@
+
+---
+- name: Check Docker CLI version
+  ansible.builtin.command:
+    cmd: docker --version
+  register: docker_cli_result
+  changed_when: false
+
+- name: Check Docker Compose version
+  ansible.builtin.command:
+    cmd: docker compose version
+  register: docker_compose_result
+  changed_when: false
+
+- name: Check Docker Engine version
+  ansible.builtin.command:
+    cmd: docker info --format '{{ "{{" }}.ServerVersion{{ "}}" }}'
+  register: docker_engine_result
+  changed_when: false
+
+- name: Check Docker daemon connectivity
+  ansible.builtin.command:
+    cmd: docker info --format '{{ "{{" }}.OperatingSystem{{ "}}" }}'
+  register: docker_daemon_result
+  changed_when: false
+
+- name: Check Docker root directory
+  ansible.builtin.command:
+    cmd: docker info --format '{{ "{{" }}.DockerRootDir{{ "}}" }}'
+  register: docker_root_result
+  changed_when: false
+
+- name: Validate Docker environment
+  ansible.builtin.assert:
+    that:
+      - docker_cli_result.rc == 0
+      - docker_compose_result.rc == 0
+      - docker_engine_result.rc == 0
+      - docker_daemon_result.rc == 0
+      - docker_root_result.rc == 0
+    success_msg: "Docker environment validation passed."
+    fail_msg: "Docker environment validation failed."
+
+- name: Display Docker environment report
+  ansible.builtin.debug:
+    msg:
+      - "Docker CLI: {{ docker_cli_result.stdout }}"
+      - "Docker Compose: {{ docker_compose_result.stdout }}"
+      - "Docker Engine: {{ docker_engine_result.stdout }}"
+      - "Operating System: {{ docker_daemon_result.stdout }}"
+      - "Docker Root Directory: {{ docker_root_result.stdout }}"

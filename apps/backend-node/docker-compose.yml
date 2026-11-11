@@ -1,0 +1,68 @@
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: opspilot-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "127.0.0.1:5434:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    #container_name: opspilot-backend
+    restart: unless-stopped
+
+    # ports:
+    #   - "127.0.0.1:5001:5000"
+
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: opspilot-nginx
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:80:80"
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

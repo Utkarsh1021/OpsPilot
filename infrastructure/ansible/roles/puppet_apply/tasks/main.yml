@@ -1,0 +1,63 @@
+---
+- name: Verify Puppet installation
+  ansible.builtin.command:
+    cmd: puppet --version
+  register: puppet_version
+  changed_when: false
+
+- name: Display Puppet version
+  ansible.builtin.debug:
+    msg: "Puppet version: {{ puppet_version.stdout }}"
+
+- name: Verify Puppet module entry point
+  ansible.builtin.stat:
+    path: "{{ puppet_project_dir }}/modules/{{ puppet_module_name }}/manifests/init.pp"
+  register: puppet_module_file
+
+- name: Verify Puppet ERB template
+  ansible.builtin.stat:
+    path: "{{ puppet_project_dir }}/modules/{{ puppet_module_name }}/templates/system-info.conf.erb"
+  register: puppet_template_file
+
+- name: Validate Puppet prerequisites
+  ansible.builtin.assert:
+    that:
+      - puppet_module_file.stat.exists
+      - puppet_template_file.stat.exists
+    success_msg: "Puppet module and template are available."
+    fail_msg: "Puppet module or template is missing."
+
+- name: Verify package manager template entry
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -q
+      - PACKAGE_MANAGER
+      - "{{ puppet_project_dir }}/modules/{{ puppet_module_name }}/templates/system-info.conf.erb"
+  changed_when: false
+
+- name: Apply Puppet module
+  ansible.builtin.command:
+    argv:
+      - puppet
+      - apply
+      - --detailed-exitcodes
+      - --modulepath=modules
+      - -e
+      - "include {{ puppet_module_name }}"
+    chdir: "{{ puppet_project_dir }}"
+  register: puppet_apply_result
+  changed_when: puppet_apply_result.rc == 2
+  failed_when: puppet_apply_result.rc not in [0, 2]
+
+- name: Verify generated Puppet configuration
+  ansible.builtin.stat:
+    path: "{{ puppet_generated_config }}"
+  register: puppet_generated_file
+
+- name: Validate Puppet configuration
+  ansible.builtin.assert:
+    that:
+      - puppet_generated_file.stat.exists
+    success_msg: "Puppet configuration successfully generated."
+    fail_msg: "Puppet configuration file was not generated."

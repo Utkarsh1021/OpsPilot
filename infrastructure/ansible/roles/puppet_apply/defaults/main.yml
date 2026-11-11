@@ -1,0 +1,4 @@
+---
+puppet_project_dir: /home/utkarsh/projects/OpsPilot/infrastructure/puppet
+puppet_module_name: opspilot_base
+puppet_generated_config: /home/utkarsh/opspilot-puppet-lab/module-info.conf

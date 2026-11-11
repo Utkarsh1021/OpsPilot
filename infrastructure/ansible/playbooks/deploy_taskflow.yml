@@ -1,0 +1,9 @@
+
+---
+- name: Deploy TaskFlow application
+  hosts: local
+  become: false
+  gather_facts: false
+
+  roles:
+    - taskflow_deploy

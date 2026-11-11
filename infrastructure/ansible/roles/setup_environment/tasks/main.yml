@@ -1,0 +1,30 @@
+
+---
+- name: Display operating system information
+  ansible.builtin.debug:
+    msg: "Running OpsPilot on {{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+- name: Create OpsPilot deployment directory
+  ansible.builtin.file:
+    path: "{{ opspilot_deployment_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Create deployment information file
+  ansible.builtin.copy:
+    dest: "{{ opspilot_deployment_dir }}/deployment-info.txt"
+    content: |
+      Project: OpsPilot
+      Managed by: Ansible
+      Operating System: {{ ansible_distribution }}
+      Distribution Version: {{ ansible_distribution_version }}
+    mode: "0644"
+
+- name: Verify deployment directory
+  ansible.builtin.stat:
+    path: "{{ opspilot_deployment_dir }}/deployment-info.txt"
+  register: deployment_file
+
+- name: Display deployment verification
+  ansible.builtin.debug:
+    msg: "Deployment information file exists: {{ deployment_file.stat.exists }}"

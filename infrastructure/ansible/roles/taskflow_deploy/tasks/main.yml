@@ -1,0 +1,96 @@
+
+---
+- name: Verify TaskFlow Compose file exists
+  ansible.builtin.stat:
+    path: "{{ taskflow_project_dir }}/docker-compose.yml"
+  register: taskflow_compose_file
+
+- name: Verify TaskFlow environment file exists
+  ansible.builtin.stat:
+    path: "{{ taskflow_project_dir }}/.env"
+  register: taskflow_env_file
+
+- name: Validate TaskFlow deployment prerequisites
+  ansible.builtin.assert:
+    that:
+      - taskflow_compose_file.stat.exists
+      - taskflow_env_file.stat.exists
+      - taskflow_env_file.stat.mode == "0600"
+    success_msg: "TaskFlow deployment prerequisites verified."
+    fail_msg: "TaskFlow files are missing or .env permissions are incorrect."
+
+- name: Manage TaskFlow Nginx configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ taskflow_project_dir }}/nginx/nginx.conf"
+    owner: utkarsh
+    mode: "0644"
+  notify:
+    - Validate TaskFlow Nginx configuration
+    - Reload TaskFlow Nginx
+
+- name: Validate Docker Compose configuration
+  ansible.builtin.command:
+    cmd: docker compose config -q
+    chdir: "{{ taskflow_project_dir }}"
+  changed_when: false
+
+- name: Deploy TaskFlow application
+  community.docker.docker_compose_v2:
+    project_src: "{{ taskflow_project_dir }}"
+    state: present
+    build: policy
+    scale:
+      backend: "{{ taskflow_backend_replicas }}"
+  register: taskflow_deployment
+  changed_when: >-
+    taskflow_deployment.actions | default([])
+    | rejectattr('status', 'equalto', 'Waiting')
+    | list | length > 0
+
+# - name: Debug TaskFlow deployment result
+#   ansible.builtin.debug:
+#     var: taskflow_deployment
+- name: Apply pending Nginx configuration handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for TaskFlow application health endpoint
+  ansible.builtin.uri:
+    url: "{{ taskflow_health_endpoint }}"
+    method: GET
+    status_code: 200
+  register: taskflow_health
+  retries: 12
+  delay: 5
+  until: taskflow_health.status == 200
+
+- name: Wait for TaskFlow database health endpoint
+  ansible.builtin.uri:
+    url: "{{ taskflow_database_health_endpoint }}"
+    method: GET
+    status_code: 200
+  register: taskflow_database_health
+  retries: 12
+  delay: 5
+  until: taskflow_database_health.status == 200
+
+- name: Verify three backend replicas are running
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - ps
+      - --status
+      - running
+      - -q
+      - backend
+    chdir: "{{ taskflow_project_dir }}"
+  register: taskflow_backend_containers
+  changed_when: false
+
+- name: Validate backend replica count
+  ansible.builtin.assert:
+    that:
+      - taskflow_backend_containers.stdout_lines | length == taskflow_backend_replicas
+    success_msg: "All {{ taskflow_backend_replicas }} backend replicas are running."
+    fail_msg: "Expected {{ taskflow_backend_replicas }} backend replicas."

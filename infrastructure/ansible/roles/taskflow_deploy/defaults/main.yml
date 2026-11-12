@@ -1,8 +1,9 @@
-
 ---
 taskflow_project_dir: /home/utkarsh/projects/OpsPilot/apps/backend-node
 
 taskflow_backend_replicas: 3
+
+taskflow_image: opspilot-taskflow:local
 
 taskflow_health_endpoint: http://127.0.0.1/api/v1/health
 

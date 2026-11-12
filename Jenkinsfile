@@ -71,8 +71,18 @@ pipeline {
                 }
             }
         }
-    }
+        stage('Ansible Deployment') {
+            steps {
+                echo 'Deploying TaskFlow using Ansible...'
 
+                sh '''
+                    sudo -n -u utkarsh \
+                        /usr/local/lib/opspilot/deploy-taskflow \
+                        ${IMAGE_NAME}:${BUILD_NUMBER}
+                '''
+            }
+        }
+    }
     post {
         success {
             echo 'OpsPilot CI pipeline completed successfully!'

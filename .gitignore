@@ -21,3 +21,4 @@ crash.*.log
 # Operating system
 .DS_Store
 Thumbs.db
+.ansible-compose.override.yml

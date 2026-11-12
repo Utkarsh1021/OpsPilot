@@ -29,17 +29,37 @@
     - Validate TaskFlow Nginx configuration
     - Reload TaskFlow Nginx
 
+- name: Generate TaskFlow image override
+  ansible.builtin.template:
+    src: taskflow-image.override.yml.j2
+    dest: "{{ taskflow_project_dir }}/.ansible-compose.override.yml"
+    owner: utkarsh
+    group: utkarsh
+    mode: "0644"
+
 - name: Validate Docker Compose configuration
   ansible.builtin.command:
-    cmd: docker compose config -q
+    argv:
+      - docker
+      - compose
+      - -f
+      - docker-compose.yml
+      - -f
+      - .ansible-compose.override.yml
+      - config
+      - -q
     chdir: "{{ taskflow_project_dir }}"
   changed_when: false
 
 - name: Deploy TaskFlow application
   community.docker.docker_compose_v2:
     project_src: "{{ taskflow_project_dir }}"
+    files:
+      - docker-compose.yml
+      - .ansible-compose.override.yml
     state: present
-    build: policy
+    build: never
+    pull: never
     scale:
       backend: "{{ taskflow_backend_replicas }}"
   register: taskflow_deployment
@@ -48,9 +68,6 @@
     | rejectattr('status', 'equalto', 'Waiting')
     | list | length > 0
 
-# - name: Debug TaskFlow deployment result
-#   ansible.builtin.debug:
-#     var: taskflow_deployment
 - name: Apply pending Nginx configuration handlers
   ansible.builtin.meta: flush_handlers
 
@@ -74,11 +91,15 @@
   delay: 5
   until: taskflow_database_health.status == 200
 
-- name: Verify three backend replicas are running
+- name: Verify backend replicas are running
   ansible.builtin.command:
     argv:
       - docker
       - compose
+      - -f
+      - docker-compose.yml
+      - -f
+      - .ansible-compose.override.yml
       - ps
       - --status
       - running

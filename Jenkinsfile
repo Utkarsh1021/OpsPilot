@@ -53,7 +53,13 @@ pipeline {
                 }
             }
         }
-
+        stage('Automated Tests') {
+            steps {
+                dir('apps/backend-node') {
+                    sh 'npm test'
+                }
+            }
+        }
         stage('Docker Image Build') {
             steps {
                 dir('apps/backend-node') {

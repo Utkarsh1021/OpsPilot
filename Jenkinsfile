@@ -96,7 +96,14 @@ pipeline {
                 '''
             }
         }
-
+        stage('Nagios Health Verification') {
+            steps {
+                echo 'Verifying live Nagios service states...'
+                sh '''
+                    sudo -n /usr/local/lib/opspilot/check-nagios-health
+                '''
+            }
+        }
     }
     post {
         success {

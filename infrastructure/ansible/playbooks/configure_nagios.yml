@@ -1,0 +1,8 @@
+---
+- name: Configure Nagios monitoring for OpsPilot
+  hosts: local
+  become: true
+  gather_facts: false
+
+  roles:
+    - nagios_monitoring

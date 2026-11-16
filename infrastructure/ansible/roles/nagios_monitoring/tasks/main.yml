@@ -1,0 +1,52 @@
+
+---
+- name: Verify Nagios configuration directory exists
+  ansible.builtin.stat:
+    path: "{{ nagios_config_dir }}/conf.d"
+  register: nagios_config_directory
+
+- name: Ensure Nagios configuration directory exists
+  ansible.builtin.assert:
+    that:
+      - nagios_config_directory.stat.isdir
+    fail_msg: "Nagios configuration directory does not exist."
+
+- name: Deploy and validate OpsPilot Nagios configuration
+  block:
+
+    - name: Deploy OpsPilot Nagios configuration
+      ansible.builtin.template:
+        src: opspilot.cfg.j2
+        dest: "{{ nagios_custom_config }}"
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      register: nagios_template_result
+      notify: Restart Nagios
+
+    - name: Validate complete Nagios configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/nagios4
+          - -v
+          - "{{ nagios_config_file }}"
+      changed_when: false
+
+  rescue:
+
+    - name: Restore previous Nagios configuration
+      ansible.builtin.copy:
+        src: "{{ nagios_template_result.backup_file }}"
+        dest: "{{ nagios_custom_config }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      when:
+        - nagios_template_result is defined
+        - nagios_template_result.backup_file is defined
+
+    - name: Stop deployment after validation failure
+      ansible.builtin.fail:
+        msg: "Nagios validation failed. Previous configuration was restored."

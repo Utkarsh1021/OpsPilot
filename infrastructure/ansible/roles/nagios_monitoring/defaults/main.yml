@@ -1,0 +1,26 @@
+---
+# Nagios configuration paths
+nagios_config_dir: /etc/nagios4
+nagios_custom_config: /etc/nagios4/conf.d/opspilot.cfg
+nagios_config_file: /etc/nagios4/nagios.cfg
+
+# Nagios service
+nagios_service_name: nagios4
+
+# Monitoring target
+nagios_host_name: localhost
+
+# Jenkins monitoring
+nagios_jenkins_port: 8080
+nagios_jenkins_path: /login
+
+# TaskFlow API monitoring
+nagios_taskflow_port: 80
+nagios_taskflow_path: /api/v1/health
+
+# Nagios Web UI monitoring
+nagios_web_port: 8082
+nagios_web_path: /nagios4/
+
+# PostgreSQL monitoring
+nagios_postgres_port: 5434

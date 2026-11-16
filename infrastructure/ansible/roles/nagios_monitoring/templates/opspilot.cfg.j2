@@ -1,0 +1,61 @@
+###############################################################################
+# OpsPilot Custom Commands
+###############################################################################
+
+define command {
+    command_name    check_http_port
+    command_line    /usr/lib/nagios/plugins/check_http -H '$HOSTADDRESS$' -I '$HOSTADDRESS$' -p '$ARG1$' -u '$ARG2$'
+}
+
+define command {
+    command_name    check_tcp_port
+    command_line    /usr/lib/nagios/plugins/check_tcp -H '$HOSTADDRESS$' -p '$ARG1$'
+}
+
+###############################################################################
+# OpsPilot - Custom Service Monitoring
+###############################################################################
+
+# Jenkins CI/CD
+define service {
+    use                     local-service
+    host_name               {{ nagios_host_name }}
+    service_description     OpsPilot - Jenkins
+    check_command           check_http_port!{{ nagios_jenkins_port }}!{{ nagios_jenkins_path }}
+    check_interval          1
+    retry_interval          1
+    notifications_enabled   0
+}
+
+# TaskFlow REST API
+define service {
+    use                     local-service
+    host_name               {{ nagios_host_name }}
+    service_description     OpsPilot - TaskFlow API
+    check_command           check_http_port!{{ nagios_taskflow_port }}!{{ nagios_taskflow_path }}
+    check_interval          1
+    retry_interval          1
+    notifications_enabled   0
+}
+
+# Nagios Web Interface
+define service {
+    use                     local-service
+    host_name               {{ nagios_host_name }}
+    service_description     OpsPilot - Nagios Web UI
+    check_command           check_http_port!{{ nagios_web_port }}!{{ nagios_web_path }}
+    check_interval          1
+    retry_interval          1
+    notifications_enabled   0
+}
+
+# PostgreSQL Database
+define service {
+    use                     local-service
+    host_name               {{ nagios_host_name }}
+    service_description     OpsPilot - PostgreSQL
+    check_command           check_tcp_port!{{ nagios_postgres_port }}
+    check_interval          1
+    retry_interval          1
+    notifications_enabled   0
+}

@@ -20,6 +20,10 @@ pipeline {
                     test -d infrastructure/ansible
                     test -d infrastructure/puppet
 
+                    test -f infrastructure/ansible/playbooks/configure_nagios.yml
+                    test -f infrastructure/ansible/roles/nagios_monitoring/tasks/main.yml
+                    test -f infrastructure/ansible/roles/nagios_monitoring/templates/opspilot.cfg.j2
+
                     echo "Repository structure validation passed."
                 '''
             }
@@ -82,6 +86,17 @@ pipeline {
                 '''
             }
         }
+
+        stage('Nagios Configuration Deployment') {
+            steps {
+                echo 'Validating and deploying Nagios configuration using Ansible...'
+
+                sh '''
+                    sudo -n /usr/local/lib/opspilot/configure-nagios
+                '''
+            }
+        }
+
     }
     post {
         success {

@@ -80,6 +80,45 @@ The application is deployed using Cloudflare's free-tier services to provide pub
        Kubernetes (Kind)
 ```
 
+#### Implemented CI/CD Workflow
+
+The Jenkins pipeline automates the TaskFlow backend build, validation, testing, containerization, deployment, and Nagios monitoring configuration.
+
+**Pipeline stages:**
+
+1. Repository validation and source checkout.
+2. Dependency installation using `npm ci`.
+3. Dependency security audit using `npm audit`.
+4. JavaScript syntax validation.
+5. Automated backend tests using Node.js test runner.
+6. Docker image build with unique Jenkins build tags.
+7. TaskFlow deployment using Ansible.
+8. Nagios configuration validation and deployment using Ansible.
+
+**Infrastructure automation:**
+
+- Ansible manages TaskFlow deployment and Nagios monitoring configuration.
+- Nagios monitors Jenkins, TaskFlow API, its web interface, and PostgreSQL.
+- Restricted sudo permissions allow Jenkins to invoke approved deployment wrappers.
+- Nagios configuration is validated before the service is restarted.
+
+#### Pipeline Execution Evidence
+
+**Latest successful execution: Build #7**
+
+| Metric | Result |
+|---|---|
+| Pipeline status | SUCCESS |
+| Automated tests | 18 passed, 0 failed |
+| Security audit | 0 vulnerabilities |
+| Docker image | `opspilot-taskflow:7` |
+| Backend replicas | 3 running |
+| Application health | Passed |
+| Database health | Passed |
+| Ansible deployment | Successful |
+
+The deployment currently runs in the local WSL2 and Docker Desktop environment. Public cloud deployment is planned as a future phase.
+
 *Note: The diagram represents the planned architecture. Individual components will be integrated progressively. Local PostgreSQL and Cloudflare D1 are separate database environments.*
 
 ---

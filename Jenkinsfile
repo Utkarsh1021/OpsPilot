@@ -2,6 +2,16 @@
 pipeline {
     agent any
 
+    options {
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(
+            numToKeepStr: '20',
+            artifactNumToKeepStr: '10'
+        ))
+        timestamps()
+    }
+
     environment {
         IMAGE_NAME = 'opspilot-taskflow'
     }
@@ -10,9 +20,11 @@ pipeline {
 
         stage('Validate Repository') {
             steps {
-                echo 'Validating project structure...'
+                echo 'Validating project structure and deployment prerequisites...'
 
                 sh '''
+
+                    set -eu
                     test -f apps/backend-node/package.json
                     test -f apps/backend-node/package-lock.json
                     test -f apps/backend-node/Dockerfile
@@ -24,7 +36,22 @@ pipeline {
                     test -f infrastructure/ansible/roles/nagios_monitoring/tasks/main.yml
                     test -f infrastructure/ansible/roles/nagios_monitoring/templates/opspilot.cfg.j2
 
-                    echo "Repository structure validation passed."
+
+                    # Required CLI tools
+                    command -v git
+                    command -v node
+                    command -v npm
+                    command -v docker
+                    command -v ansible-playbook
+                    command -v sudo
+
+                    # Deployment wrappers
+                    test -x /usr/local/lib/opspilot/deploy-taskflow
+                    test -x /usr/local/lib/opspilot/configure-nagios
+                    test -x /usr/local/lib/opspilot/check-nagios-health
+
+                    echo "Repository and deployment prerequisites validation passed."
+
                 '''
             }
         }

@@ -76,7 +76,6 @@ pipeline {
                 dir('apps/backend-node') {
                     script {
                         echo 'Auditing all dependencies, including development dependencies...'
-
                         int auditStatus = sh(
                             returnStatus: true,
                             script: 'npm audit --audit-level=moderate --json > npm-audit-full.json'
@@ -86,34 +85,62 @@ pipeline {
                             artifacts: 'npm-audit-full.json',
                             fingerprint: true
                         )
+                        int reportStatus = sh(
+                            returnStatus: true,
+                            script: '''
+                                node -e '
+                                    const fs = require("fs");
 
-                        def auditReport
+                                    try {
+                                        const report = JSON.parse(
+                                            fs.readFileSync("npm-audit-full.json", "utf8")
+                                        );
 
-                        try {
-                            auditReport = new groovy.json.JsonSlurperClassic().parseText(
-                                readFile('npm-audit-full.json')
-                            )
-                        } catch (Exception e) {
-                            error('Dependency audit returned invalid JSON. Cannot verify security status.')
-                        }
-                        if (auditReport.error != null) {
-                            error('Dependency audit execution failed: ' + auditReport.error.toString())
-                        }
+                                        if (report.error) {
+                                            console.error("AUDIT_ERROR:", report.error);
+                                            process.exit(2);
+                                        }
 
-                        def vulnerabilities = auditReport.vulnerabilities
+                                        if (!report.metadata ||
+                                            !report.metadata.vulnerabilities) {
+                                                console.error("Invalid npm audit report structure.");
+                                                process.exit(2);
+                                            }
 
-                        if (auditStatus == 0) {
-                            echo 'Full dependency audit passed at the configured moderate severity threshold.'
-                        } else if (
-                            vulnerabilities instanceof Map &&
-                            !vulnerabilities.isEmpty()
-                        ) {
+                                        const counts = report.metadata.vulnerabilities;
+
+                                        console.log("Vulnerability summary:", counts);
+
+                                        if (counts.moderate > 0 ||
+                                            counts.high > 0 ||
+                                            counts.critical > 0
+                                        ) {
+                                            process.exit(1);
+                                        }
+                                        process.exit(0);
+                                    } catch (error) {
+                                        console.error("Unable to parse npm audit report:", error.message);
+                                        process.exit(2);
+                                    }
+                                '
+                            '''
+                        )
+                        if (reportStatus == 2) {
+                            error('Dependency audit failed or returned an invalid report.')
+                        } else if (reportStatus == 1) {
+                            if (auditStatus == 0) {
+                                error('Unexpected audit status: report contains vulnerabilities but npm returned success.')
+                            }
+
                             unstable(
-                            'Development dependency vulnerabilities detected. Review the archived npm audit report.'
+                                'Development dependency vulnerabilities detected. Review the archived npm audit report.'
                             )
+
                             echo 'WARNING: Full dependency audit found vulnerabilities.'
+                        } else if (auditStatus != 0) {
+                            error('npm audit exited unsuccessfully without reporting vulnerabilities.')
                         } else {
-                            error('Dependency audit failed without a valid vulnerability report. Review the archived report.')
+                            echo 'Full dependency audit passed at the configured moderate severity threshold.'
                         }
                     }
                 }

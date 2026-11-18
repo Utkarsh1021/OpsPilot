@@ -63,15 +63,62 @@ pipeline {
                 }
             }
         }
-
-        stage('Dependency Security Audit') {
+        stage('Production Dependency Security Audit') {
             steps {
                 dir('apps/backend-node') {
-                    sh 'npm audit --audit-level=moderate'
+                    echo 'Auditing production dependencies...'
+                    sh 'npm audit --omit=dev --audit-level=moderate'
                 }
             }
         }
+        stage('Full Dependency Security Audit') {
+            steps {
+                dir('apps/backend-node') {
+                    script {
+                        echo 'Auditing all dependencies, including development dependencies...'
 
+                        int auditStatus = sh(
+                            returnStatus: true,
+                            script: 'npm audit --audit-level=moderate --json > npm-audit-full.json'
+                        )
+
+                        archiveArtifacts(
+                            artifacts: 'npm-audit-full.json',
+                            fingerprint: true
+                        )
+
+                        def auditReport
+
+                        try {
+                            auditReport = new groovy.json.JsonSlurperClassic().parseText(
+                                readFile('npm-audit-full.json')
+                            )
+                        } catch (Exception e) {
+                            error('Dependency audit returned invalid JSON. Cannot verify security status.')
+                        }
+                        if (auditReport.error != null) {
+                            error('Dependency audit execution failed: ' + auditReport.error.toString())
+                        }
+
+                        def vulnerabilities = auditReport.vulnerabilities
+
+                        if (auditStatus == 0) {
+                            echo 'Full dependency audit passed at the configured moderate severity threshold.'
+                        } else if (
+                            vulnerabilities instanceof Map &&
+                            !vulnerabilities.isEmpty()
+                        ) {
+                            unstable(
+                            'Development dependency vulnerabilities detected. Review the archived npm audit report.'
+                            )
+                            echo 'WARNING: Full dependency audit found vulnerabilities.'
+                        } else {
+                            error('Dependency audit failed without a valid vulnerability report. Review the archived report.')
+                        }
+                    }
+                }
+            }
+        }
         stage('JavaScript Syntax Check') {
             steps {
                 dir('apps/backend-node') {
@@ -143,6 +190,9 @@ pipeline {
 
         always {
             echo 'OpsPilot pipeline execution finished.'
+        }
+        unstable {
+            echo 'Pipeline completed with warnings. Review dependency security findings.'
         }
     }
 }

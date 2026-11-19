@@ -188,6 +188,18 @@ pipeline {
             }
         }
 
+        stage('Kubernetes Deployment') {
+            steps {
+                echo 'Deploying TaskFlow to Kubernetes...'
+
+                sh '''
+                    sudo -n -u utkarsh \
+                        /usr/local/lib/opspilot/deploy-taskflow-k8s \
+                        ${IMAGE_NAME}:${BUILD_NUMBER}
+                '''
+            }
+        }
+
         stage('Nagios Configuration Deployment') {
             steps {
                 echo 'Validating and deploying Nagios configuration using Ansible...'

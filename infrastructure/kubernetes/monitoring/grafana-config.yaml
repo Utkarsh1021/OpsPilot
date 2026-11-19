@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  namespace: opspilot-monitoring
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: false
+  dashboard-provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: OpsPilot
+        orgId: 1
+        folder: OpsPilot
+        type: file
+        disableDeletion: true
+        editable: true
+        options:
+          path: /etc/grafana/provisioning/dashboards
+  dashboard.json: |
+    {
+      "id": null,
+      "uid": "opspilot-kubernetes",
+      "title": "OpsPilot Kubernetes Overview",
+      "tags": ["opspilot", "kubernetes"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "15s",
+      "time": {"from": "now-30m", "to": "now"},
+      "panels": [
+        {
+          "id": 1,
+          "title": "Available Backend Replicas",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "targets": [
+            {
+              "expr": "kube_deployment_status_replicas_available{namespace=\"opspilot\",deployment=\"taskflow-backend\"}",
+              "legendFormat": "Available replicas",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "TaskFlow API Health",
+          "type": "stat",
+          "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+          "targets": [
+            {
+              "expr": "min(probe_success{job=\"taskflow-health\"})",
+              "legendFormat": "Health",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 1,
+              "mappings": [
+                {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}
+              ]
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 3,
+          "title": "TaskFlow HPA Replicas",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+          "targets": [
+            {
+              "expr": "kube_horizontalpodautoscaler_status_current_replicas{namespace=\"opspilot\",horizontalpodautoscaler=\"taskflow-backend\"}",
+              "legendFormat": "Current replicas",
+              "refId": "A"
+            },
+            {
+              "expr": "kube_horizontalpodautoscaler_spec_max_replicas{namespace=\"opspilot\",horizontalpodautoscaler=\"taskflow-backend\"}",
+              "legendFormat": "Maximum replicas",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Running TaskFlow Pods",
+          "type": "stat",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "targets": [
+            {
+              "expr": "sum(kube_pod_status_phase{namespace=\"opspilot\",phase=\"Running\"})",
+              "legendFormat": "Running pods",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "PostgreSQL PVC Capacity",
+          "type": "stat",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "targets": [
+            {
+              "expr": "kube_persistentvolumeclaim_status_phase{namespace=\"opspilot\",persistentvolumeclaim=\"postgres-data\",phase=\"Bound\"}",
+              "legendFormat": "PVC Bound",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    }

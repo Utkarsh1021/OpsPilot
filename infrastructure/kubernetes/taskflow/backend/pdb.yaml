@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: taskflow-backend-pdb
+  namespace: opspilot
+  labels:
+    app.kubernetes.io/name: taskflow-backend
+    app.kubernetes.io/part-of: opspilot
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: taskflow-backend

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hpa-load-test
+  namespace: opspilot
+  labels:
+    app: hpa-load-test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: cpu-loader
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          end=$(( $(date +%s) + 180 ))
+          while [ $(date +%s) -lt $end ]; do
+            yes > /dev/null
+          done
+      resources:
+        requests:
+          cpu: 100m
+          memory: 32Mi
+        limits:
+          cpu: 200m
+          memory: 64Mi

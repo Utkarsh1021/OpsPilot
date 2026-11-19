@@ -10,88 +10,26 @@
     path: "{{ taskflow_project_dir }}/.env"
   register: taskflow_env_file
 
+- name: Verify TaskFlow image override exists
+  ansible.builtin.stat:
+    path: "{{ taskflow_project_dir }}/.ansible-compose.override.yml"
+  register: taskflow_override_file
+
 - name: Validate TaskFlow deployment prerequisites
   ansible.builtin.assert:
     that:
       - taskflow_compose_file.stat.exists
       - taskflow_env_file.stat.exists
       - taskflow_env_file.stat.mode == "0600"
+      - taskflow_override_file.stat.exists
     success_msg: "TaskFlow deployment prerequisites verified."
     fail_msg: "TaskFlow files are missing or .env permissions are incorrect."
 
-- name: Manage TaskFlow Nginx configuration
-  ansible.builtin.template:
-    src: nginx.conf.j2
-    dest: "{{ taskflow_project_dir }}/nginx/nginx.conf"
-    owner: utkarsh
-    mode: "0644"
-  notify:
-    - Validate TaskFlow Nginx configuration
-    - Reload TaskFlow Nginx
+# -------------------------------------------------------
+# CAPTURE THE CURRENTLY DEPLOYED IMAGE
+# -------------------------------------------------------
 
-- name: Generate TaskFlow image override
-  ansible.builtin.template:
-    src: taskflow-image.override.yml.j2
-    dest: "{{ taskflow_project_dir }}/.ansible-compose.override.yml"
-    owner: utkarsh
-    group: utkarsh
-    mode: "0644"
-
-- name: Validate Docker Compose configuration
-  ansible.builtin.command:
-    argv:
-      - docker
-      - compose
-      - -f
-      - docker-compose.yml
-      - -f
-      - .ansible-compose.override.yml
-      - config
-      - -q
-    chdir: "{{ taskflow_project_dir }}"
-  changed_when: false
-
-- name: Deploy TaskFlow application
-  community.docker.docker_compose_v2:
-    project_src: "{{ taskflow_project_dir }}"
-    files:
-      - docker-compose.yml
-      - .ansible-compose.override.yml
-    state: present
-    build: never
-    pull: never
-    scale:
-      backend: "{{ taskflow_backend_replicas }}"
-  register: taskflow_deployment
-  changed_when: >-
-    taskflow_deployment.actions | default([])
-    | rejectattr('status', 'equalto', 'Waiting')
-    | list | length > 0
-
-- name: Apply pending Nginx configuration handlers
-  ansible.builtin.meta: flush_handlers
-
-- name: Wait for TaskFlow application health endpoint
-  ansible.builtin.uri:
-    url: "{{ taskflow_health_endpoint }}"
-    method: GET
-    status_code: 200
-  register: taskflow_health
-  retries: 12
-  delay: 5
-  until: taskflow_health.status == 200
-
-- name: Wait for TaskFlow database health endpoint
-  ansible.builtin.uri:
-    url: "{{ taskflow_database_health_endpoint }}"
-    method: GET
-    status_code: 200
-  register: taskflow_database_health
-  retries: 12
-  delay: 5
-  until: taskflow_database_health.status == 200
-
-- name: Verify backend replicas are running
+- name: Discover currently running backend containers
   ansible.builtin.command:
     argv:
       - docker
@@ -106,12 +44,283 @@
       - -q
       - backend
     chdir: "{{ taskflow_project_dir }}"
-  register: taskflow_backend_containers
+  register: taskflow_running_containers
   changed_when: false
 
-- name: Validate backend replica count
+- name: Verify existing backend replicas are available
   ansible.builtin.assert:
     that:
-      - taskflow_backend_containers.stdout_lines | length == taskflow_backend_replicas
-    success_msg: "All {{ taskflow_backend_replicas }} backend replicas are running."
-    fail_msg: "Expected {{ taskflow_backend_replicas }} backend replicas."
+      - taskflow_running_containers.stdout_lines | length == taskflow_backend_replicas
+    fail_msg: >-
+      Cannot safely deploy: expected {{ taskflow_backend_replicas }}
+      existing backend containers, found
+      {{ taskflow_running_containers.stdout_lines | length }}.
+
+- name: Inspect the image used by each existing backend replica
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{' }}.Config.Image{{ '}}' }}"
+      - "{{ item }}"
+    chdir: "{{ taskflow_project_dir }}"
+  loop: "{{ taskflow_running_containers.stdout_lines }}"
+  register: taskflow_running_images
+  changed_when: false
+
+- name: Verify all existing replicas use the same image
+  ansible.builtin.assert:
+    that:
+      - >-
+        taskflow_running_images.results
+        | map(attribute='stdout')
+        | unique
+        | list
+        | length == 1
+    fail_msg: >-
+      Backend replicas are using different images.
+      Automatic rollback cannot safely determine a single previous image.
+
+- name: Save the currently deployed image for rollback
+  ansible.builtin.set_fact:
+    taskflow_previous_image: "{{ taskflow_running_images.results[0].stdout }}"
+
+- name: Verify previous image is available locally
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - "{{ taskflow_previous_image }}"
+  changed_when: false
+
+- name: Display deployment and rollback image information
+  ansible.builtin.debug:
+    msg:
+      - "New deployment image: {{ taskflow_image }}"
+      - "Rollback image: {{ taskflow_previous_image }}"
+
+# -------------------------------------------------------
+# PREPARE NEW DEPLOYMENT
+# -------------------------------------------------------
+
+- name: Manage TaskFlow Nginx configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ taskflow_project_dir }}/nginx/nginx.conf"
+    owner: utkarsh
+    mode: "0644"
+  notify:
+    - Validate TaskFlow Nginx configuration
+    - Reload TaskFlow Nginx
+
+- name: Generate new TaskFlow image override
+  ansible.builtin.template:
+    src: taskflow-image.override.yml.j2
+    dest: "{{ taskflow_project_dir }}/.ansible-compose.override.yml"
+    owner: utkarsh
+    group: utkarsh
+    mode: "0644"
+
+- name: Validate new Docker Compose configuration
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - -f
+      - docker-compose.yml
+      - -f
+      - .ansible-compose.override.yml
+      - config
+      - -q
+    chdir: "{{ taskflow_project_dir }}"
+  changed_when: false
+
+# -------------------------------------------------------
+# DEPLOYMENT WITH AUTOMATIC ROLLBACK
+# -------------------------------------------------------
+
+- name: Deploy and verify TaskFlow with automatic rollback
+  block:
+
+    - name: Deploy new TaskFlow application
+      community.docker.docker_compose_v2:
+        project_src: "{{ taskflow_project_dir }}"
+        files:
+          - docker-compose.yml
+          - .ansible-compose.override.yml
+        state: present
+        build: never
+        pull: never
+        scale:
+          backend: "{{ taskflow_backend_replicas }}"
+      register: taskflow_deployment
+      changed_when: >-
+        taskflow_deployment.actions | default([])
+        | rejectattr('status', 'equalto', 'Waiting')
+        | list | length > 0
+
+    - name: Apply pending Nginx configuration handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for TaskFlow application health endpoint
+      ansible.builtin.uri:
+        url: "{{ taskflow_health_endpoint }}"
+        method: GET
+        status_code: 200
+      register: taskflow_health
+      retries: 12
+      delay: 5
+      until: taskflow_health.status == 200
+
+    - name: Wait for TaskFlow database health endpoint
+      ansible.builtin.uri:
+        url: "{{ taskflow_database_health_endpoint }}"
+        method: GET
+        status_code: 200
+      register: taskflow_database_health
+      retries: 12
+      delay: 5
+      until: taskflow_database_health.status == 200
+
+    - name: Verify running backend replicas
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -f
+          - docker-compose.yml
+          - -f
+          - .ansible-compose.override.yml
+          - ps
+          - --status
+          - running
+          - -q
+          - backend
+        chdir: "{{ taskflow_project_dir }}"
+      register: taskflow_backend_containers
+      changed_when: false
+
+    - name: Validate new backend replica count
+      ansible.builtin.assert:
+        that:
+          - taskflow_backend_containers.stdout_lines | length == taskflow_backend_replicas
+        success_msg: "All {{ taskflow_backend_replicas }} new backend replicas are running."
+        fail_msg: "New deployment has an incorrect backend replica count."
+
+    - name: Confirm new deployment succeeded
+      ansible.builtin.debug:
+        msg: "TaskFlow deployment successful: {{ taskflow_image }}"
+
+  rescue:
+
+    - name: Report new deployment failure
+      ansible.builtin.debug:
+        msg: >-
+          New deployment failed at task
+          '{{ ansible_failed_task.name | default("unknown") }}'.
+          Starting rollback to {{ taskflow_previous_image }}.
+
+    - name: Set previous image for rollback
+      ansible.builtin.set_fact:
+        taskflow_rollback_image: "{{ taskflow_previous_image }}"
+
+    - name: Generate previous TaskFlow image override
+      ansible.builtin.template:
+        src: taskflow-image.override.yml.j2
+        dest: "{{ taskflow_project_dir }}/.ansible-compose.override.yml"
+        owner: utkarsh
+        group: utkarsh
+        mode: "0644"
+
+    - name: Validate rollback Compose configuration
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -f
+          - docker-compose.yml
+          - -f
+          - .ansible-compose.override.yml
+          - config
+          - -q
+        chdir: "{{ taskflow_project_dir }}"
+      changed_when: false
+
+    - name: Redeploy previous TaskFlow image
+      community.docker.docker_compose_v2:
+        project_src: "{{ taskflow_project_dir }}"
+        files:
+          - docker-compose.yml
+          - .ansible-compose.override.yml
+        state: present
+        build: never
+        pull: never
+        scale:
+          backend: "{{ taskflow_backend_replicas }}"
+      register: taskflow_rollback
+      changed_when: >-
+        taskflow_rollback.actions | default([])
+        | rejectattr('status', 'equalto', 'Waiting')
+        | list | length > 0
+
+    - name: Verify restored TaskFlow application
+      ansible.builtin.uri:
+        url: "{{ taskflow_health_endpoint }}"
+        method: GET
+        status_code: 200
+      register: taskflow_rollback_health
+      retries: 12
+      delay: 5
+      until: taskflow_rollback_health.status == 200
+
+    - name: Verify restored database connectivity
+      ansible.builtin.uri:
+        url: "{{ taskflow_database_health_endpoint }}"
+        method: GET
+        status_code: 200
+      register: taskflow_rollback_database
+      retries: 12
+      delay: 5
+      until: taskflow_rollback_database.status == 200
+
+    - name: Verify restored backend replicas
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - -f
+          - docker-compose.yml
+          - -f
+          - .ansible-compose.override.yml
+          - ps
+          - --status
+          - running
+          - -q
+          - backend
+      args:
+        chdir: "{{ taskflow_project_dir }}"
+      register: taskflow_rollback_containers
+      changed_when: false
+
+    - name: Validate restored backend replica count
+      ansible.builtin.assert:
+        that:
+          - taskflow_rollback_containers.stdout_lines | length == taskflow_backend_replicas
+        success_msg: "All previous backend replicas have been restored."
+        fail_msg: "Rollback failed: incorrect backend replica count."
+
+    - name: Report successful rollback
+      ansible.builtin.debug:
+        msg: >-
+          Rollback successful. Previous image
+          {{ taskflow_previous_image }} is restored and healthy.
+          The new deployment must still be considered failed.
+
+    - name: Fail deployment after successful rollback
+      ansible.builtin.fail:
+        msg: >-
+          New TaskFlow deployment failed.
+          Automatic rollback to {{ taskflow_previous_image }} succeeded.
+          Jenkins must report this deployment as FAILED.

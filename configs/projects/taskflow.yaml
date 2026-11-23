@@ -1,0 +1,39 @@
+apiVersion: opspilot.io/v1alpha1
+kind: Application
+
+metadata:
+  name: TaskFlow
+  slug: taskflow
+
+spec:
+  source:
+    path: apps/backend-node
+
+  runtime:
+    language: node
+    version: "22"
+    packageManager: npm
+
+  build:
+    dockerfile: Dockerfile
+    context: .
+    image:
+      repository: opspilot-taskflow
+
+  health:
+    endpoints:
+      - /api/v1/health
+      - /api/v1/health/db
+
+  deployment:
+    targets:
+      - compose
+      - ansible
+      - kubernetes
+    compose:
+      file: apps/backend-node/docker-compose.yml
+    ansible:
+      playbook: infrastructure/ansible/playbooks/deploy_taskflow.yml
+      role: infrastructure/ansible/roles/taskflow_deploy
+    kubernetes:
+      manifests: infrastructure/kubernetes/taskflow

@@ -1,0 +1,72 @@
+pipeline {
+    agent any
+
+    options {
+        disableConcurrentBuilds()
+        timeout(time: 10, unit: 'MINUTES')
+        timestamps()
+    }
+
+    stages {
+        stage('Verify Repository Checkout') {
+            steps {
+                echo 'Verifying OpsPilot feature branch checkout...'
+
+                sh '''
+                    set -eu
+                    test -f Jenkinsfile.validation
+                    test -f configs/schemas/project.schema.json
+                    test -f configs/projects/taskflow.yaml
+                    test -f engine/project-config/package.json
+                    test -f engine/project-config/package-lock.json
+
+                    node --version
+                    npm --version
+
+                    echo "Repository checkout verified."
+                '''
+            }
+        }
+
+        stage('Install Project Config Dependencies') {
+            steps {
+                sh '''
+                    set -eu
+                    npm ci --prefix engine/project-config
+                '''
+            }
+        }
+
+        stage('Run Configuration Tests') {
+            steps {
+                sh '''
+                    set -eu
+                    npm --prefix engine/project-config test
+                '''
+            }
+        }
+
+        stage('Validate TaskFlow Configuration') {
+            steps {
+                sh '''
+                    set -eu
+                    npm --prefix engine/project-config run validate -- configs/projects/taskflow.yaml
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'OpsPilot feature validation completed successfully.'
+        }
+
+        failure {
+            echo 'OpsPilot feature validation failed. Review the stage logs.'
+        }
+
+        always {
+            echo 'Validation pipeline finished.'
+        }
+    }
+}

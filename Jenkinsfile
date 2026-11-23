@@ -56,6 +56,22 @@ pipeline {
             }
         }
 
+        stage('OpsPilot Project Configuration Validation') {
+            steps {
+                echo 'Validating OpsPilot project configuration...'
+
+                sh '''
+                    set -eu
+
+                    npm ci --prefix engine/project-config
+                    npm --prefix engine/project-config test
+                    npm --prefix engine/project-config run validate -- configs/projects/taskflow.yaml
+                '''
+
+                echo 'OpsPilot project configuration validation passed.'
+            }
+        }
+
         stage('Install Dependencies') {
             steps {
                 dir('apps/backend-node') {

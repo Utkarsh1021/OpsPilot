@@ -33,7 +33,40 @@ function testWithModifiedConfig(replacements, callback) {
         fs.rmSync(tempDir, { recursive: true, force: true });
     }
 }
+function testWithTemporarySource(files, callback) {
+    const tempDir = fs.mkdtempSync(
+        path.join(path.dirname(taskflowConfig), ".runtime-test-")
+    );
 
+    const relativeSourcePath = path.relative(
+        path.resolve(__dirname, "../../../"),
+        tempDir
+    );
+
+    for (const [fileName, content] of Object.entries(files)) {
+        fs.writeFileSync(path.join(tempDir, fileName), content);
+    }
+
+    const original = fs.readFileSync(taskflowConfig, "utf8");
+    const modified = original.replace(
+        "path: apps/backend-node",
+        `path: ${relativeSourcePath}`
+    );
+
+    const configDir = fs.mkdtempSync(
+        path.join(path.dirname(taskflowConfig), ".config-test-")
+    );
+
+    const configFile = path.join(configDir, "test.yaml");
+    fs.writeFileSync(configFile, modified);
+
+    try {
+        callback(validateProjectConfig(configFile));
+    } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(configDir, { recursive: true, force: true });
+    }
+}
 test("accepts a valid TaskFlow configuration", () => {
     const result = validateProjectConfig(taskflowConfig);
 
@@ -213,4 +246,107 @@ test("rejects Docker build contexts outside the application source directory", (
             ));
         }
     );
+});
+
+test("rejects a Node.js project missing package.json", () => {
+    testWithTemporarySource(
+        {
+            "Dockerfile": "FROM node:22\n",
+            "package-lock.json": "{}"
+        },
+        result => {
+            assert.equal(result.valid, false);
+            assert.ok(result.errors.some(error =>
+                error.message.includes("Node.js package manifest does not exist")
+            ));
+        }
+    );
+});
+
+test("rejects a Node.js project missing package-lock.json", () => {
+    testWithTemporarySource(
+        {
+            "Dockerfile": "FROM node:22\n",
+            "package.json": '{"name":"test","version":"1.0.0"}'
+        },
+        result => {
+            assert.equal(result.valid, false);
+            assert.ok(result.errors.some(error =>
+                error.message.includes("Node.js lockfile does not exist")
+            ));
+        }
+    );
+});
+
+test("rejects a Python project missing requirements.txt", () => {
+    const pythonConfig = path.resolve(
+        __dirname,
+        "../../../configs/projects/fastapi-demo.yaml"
+    );
+
+    const modified = fs.readFileSync(pythonConfig, "utf8").replace(
+        "path: apps/fastapi-demo",
+        "path: apps/backend-node"
+    );
+
+    const tempDir = fs.mkdtempSync(
+        path.join(path.dirname(pythonConfig), ".python-test-")
+    );
+
+    const configFile = path.join(tempDir, "test.yaml");
+    fs.writeFileSync(configFile, modified);
+
+    try {
+        const result = validateProjectConfig(configFile);
+
+        assert.equal(result.valid, false);
+        assert.ok(result.errors.some(error =>
+            error.message.includes("Python requirements file does not exist")
+        ));
+    } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
+test("rejects Node.js projects configured with an unsupported package manager", () => {
+    testWithModifiedConfig(
+        [["packageManager: npm", "packageManager: yarn"]],
+        result => {
+            assert.equal(result.valid, false);
+            assert.ok(result.errors.some(error =>
+                error.message.includes("Node.js projects currently require npm")
+            ));
+        }
+    );
+});
+
+test("rejects Python projects configured with an unsupported package manager", () => {
+    const pythonConfig = path.resolve(
+        __dirname,
+        "../../../configs/projects/fastapi-demo.yaml"
+    );
+
+    const original = fs.readFileSync(pythonConfig, "utf8");
+    const modified = original.replace(
+        "packageManager: pip",
+        "packageManager: poetry"
+    );
+
+    const tempDir = fs.mkdtempSync(
+        path.join(path.dirname(pythonConfig), ".python-test-")
+    );
+
+    const configFile = path.join(tempDir, "test.yaml");
+    fs.writeFileSync(configFile, modified);
+
+    try {
+        const result = validateProjectConfig(configFile);
+
+        assert.equal(result.valid, false);
+        assert.ok(result.errors.some(error =>
+            error.message.includes("Python projects currently require pip")
+        ));
+    } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
 });

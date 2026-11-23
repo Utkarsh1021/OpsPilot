@@ -1,0 +1,10 @@
+services:
+  fastapi-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: opspilot-fastapi-demo
+    container_name: opspilot-fastapi-demo
+    ports:
+      - "8001:8000"
+    restart: unless-stopped

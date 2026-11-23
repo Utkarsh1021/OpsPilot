@@ -1,0 +1,31 @@
+apiVersion: opspilot.io/v1alpha1
+kind: Application
+
+metadata:
+  name: FastAPI Demo
+  slug: fastapi-demo
+
+spec:
+  source:
+    path: apps/fastapi-demo
+
+  runtime:
+    language: python
+    version: "3.12"
+    packageManager: pip
+
+  build:
+    dockerfile: Dockerfile
+    context: .
+    image:
+      repository: opspilot-fastapi-demo
+
+  health:
+    endpoints:
+      - /health
+
+  deployment:
+    targets:
+      - compose
+    compose:
+      file: apps/fastapi-demo/docker-compose.yml

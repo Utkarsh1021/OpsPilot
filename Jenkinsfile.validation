@@ -16,7 +16,6 @@ pipeline {
                     set -eu
                     test -f Jenkinsfile.validation
                     test -f configs/schemas/project.schema.json
-                    test -f configs/projects/taskflow.yaml
                     test -f engine/project-config/package.json
                     test -f engine/project-config/package-lock.json
 
@@ -46,16 +45,39 @@ pipeline {
             }
         }
 
-        stage('Validate TaskFlow Configuration') {
+        stage('Validate All Project Configurations') {
             steps {
+                echo 'Discovering and validating all project configurations...'
+
                 sh '''
                     set -eu
-                    npm --prefix engine/project-config run validate -- configs/projects/taskflow.yaml
+
+                    config_count=0
+
+                    for config in configs/projects/*.yaml; do
+                        if [ -f "$config" ]; then
+                            config_count=$((config_count + 1))
+
+                            echo ""
+                            echo "========================================"
+                            echo "Validating: $config"
+                            echo "========================================"
+
+                            npm --prefix engine/project-config run validate -- "$config"
+                        fi
+                    done
+
+                    if [ "$config_count" -eq 0 ]; then
+                        echo "ERROR: No project YAML configurations found."
+                        exit 1
+                    fi
+
+                    echo ""
+                    echo "Successfully validated $config_count project configuration(s)."
                 '''
             }
         }
     }
-
     post {
         success {
             echo 'OpsPilot feature validation completed successfully.'

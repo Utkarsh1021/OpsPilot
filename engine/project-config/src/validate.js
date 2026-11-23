@@ -122,7 +122,6 @@ function validateProjectConfig(configPath) {
     } catch (error) {
         errors.push(error.message);
     }
-
     if (sourceDirectory) {
         checkPath(
             spec.build.dockerfile,
@@ -139,8 +138,26 @@ function validateProjectConfig(configPath) {
             sourceDirectory,
             "directory"
         );
-    }
 
+        const runtime = spec.runtime;
+
+        if (runtime.language === "node") {
+            if (runtime.packageManager !== "npm") {
+                errors.push("Node.js projects currently require npm");
+            } else {
+                checkPath("package.json", "Node.js package manifest", sourceDirectory, sourceDirectory);
+                checkPath("package-lock.json", "Node.js lockfile", sourceDirectory, sourceDirectory);
+            }
+        }
+
+        if (runtime.language === "python") {
+            if (runtime.packageManager !== "pip") {
+                errors.push("Python projects currently require pip");
+            } else {
+                checkPath("requirements.txt", "Python requirements file", sourceDirectory, sourceDirectory);
+            }
+        }
+    }
     const targets = spec.deployment.targets;
 
     if (targets.includes("compose")) {
